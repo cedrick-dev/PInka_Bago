@@ -47,25 +47,27 @@ data class Prediction(
 /**
  * Content detector for NSFW images using TensorFlow Lite model
  * Supports YOLOv8 format with shape [1, num_classes+4, num_anchors]
- * OPTIMIZED FOR SINGLE-CLASS MODEL: Bikini_Model(Version2).tflite
+ * OPTIMIZED FOR SINGLE-CLASS MODEL: Updated_ModelTesting#4.tflite
  */
 class RoboflowContentDetector(private val context: Context) {
 
     companion object {
         private const val TAG = "RoboflowDetector"
-        private const val MODEL_FILE = "Bikini_Model(Version2).tflite"
-        private const val INPUT_SIZE = 512
+        private const val MODEL_FILE = "Updated_Current_Model.tflite"
+        const val INPUT_SIZE = 512
 
         // Single class model
-        private const val CLASS_NAME = "bikini"
+        private const val CLASS_NAME = "explicit"
 
         // Enable full-screen mode: when true, any detection triggers full-screen coverage
         private const val USE_FULLSCREEN_MODE = true
     }
 
-    // Lower threshold for single-class model
-    private val CONF_THRESH = 0.70f
-    private val IOU_THRESH = 0.45f
+    // Lower threshold for debugging and motion-blur tolerance
+    // A moving screen creates motion blur which causes the AI's confidence to drop below 0.35.
+    // 0.25 strikes a perfect balance: ignores pure false positives, but catches blurry scrolling explicit images.
+    private val CONF_THRESH = 0.25f
+    private val IOU_THRESH = 0.25f
 
     private var interpreter: Interpreter? = null
     private var imageProcessor: ImageProcessor? = null
@@ -83,8 +85,14 @@ class RoboflowContentDetector(private val context: Context) {
             val model = FileUtil.loadMappedFile(context, MODEL_FILE)
 
             val options = Interpreter.Options().apply {
-                setNumThreads(4)
-                setUseNNAPI(false)
+                // Use exactly 2 threads. Opening 4 threads successfully spiked your inference 
+                // to 800ms because the POCO C75 CPU couldn't handle the multi-threading overhead!
+                setNumThreads(2)
+                
+                // NNAPI securely hooks into the Mediatek dedicated AI Processing Unit (APU) if it exists.
+                // If it fails or your phone doesn't have an APU, it safely falls back to CPU without a crash!
+                setUseNNAPI(true)
+                setUseXNNPACK(true)
             }
 
             interpreter = Interpreter(model, options)
@@ -101,7 +109,7 @@ class RoboflowContentDetector(private val context: Context) {
                 numAnchors = outputShape[2]
                 numClasses = numFeatures - 4
 
-                Log.d(TAG, "✓ Single-class model - Features: $numFeatures, Anchors: $numAnchors, Classes: $numClasses")
+                Log.d(TAG, "✓ Model - Features: $numFeatures, Anchors: $numAnchors, Classes: $numClasses")
 
                 // Allocate buffer ONCE
                 outputBuffer = Array(numFeatures) { FloatArray(numAnchors) }
@@ -165,17 +173,17 @@ class RoboflowContentDetector(private val context: Context) {
                     }
                 }
 
-                // 5. If full-screen mode is enabled and ANY NSFW is detected, return full-screen prediction
                 if (USE_FULLSCREEN_MODE && nms.isNotEmpty()) {
-                    val maxConfidence = nms.maxByOrNull { it.confidence }?.confidence ?: 0.5f
+                    val maxPred = nms.maxByOrNull { it.confidence }
+                    val maxConfidence = maxPred?.confidence ?: 0.5f
                     val fullScreenPrediction = Prediction(
                         x = originalWidth / 2f,
                         y = originalHeight / 2f,
                         w = originalWidth.toFloat(),
                         h = originalHeight.toFloat(),
                         confidence = maxConfidence,
-                        className = CLASS_NAME,
-                        classId = 0,
+                        className = maxPred?.className ?: "unknown",
+                        classId = maxPred?.classId ?: 0,
                         isFullScreen = true
                     )
 
@@ -211,28 +219,46 @@ class RoboflowContentDetector(private val context: Context) {
         val ws = output[2]      // Width
         val hs = output[3]      // Height
 
-        // For single-class model, class score is at index 4
-        val classScores = output[4]
-
         if (logDetails) {
-            Log.d(TAG, "Parsing ${numAnchors} anchors, single class, threshold=$CONF_THRESH")
+            Log.d(TAG, "Parsing ${numAnchors} anchors, classes=$numClasses, threshold=$CONF_THRESH")
         }
 
         var detectedCount = 0
 
         for (i in 0 until numAnchors) {
-            // Single class - just get the score directly
-            val confidence = classScores[i]
+            // Support multi-class by finding the max confidence across all classes
+            var confidence = 0f
+            var classId = 0
+            for (c in 0 until numClasses) {
+                val score = output[4 + c][i]
+                if (score > confidence) {
+                    confidence = score
+                    classId = c
+                }
+            }
 
             if (confidence < CONF_THRESH) continue
 
             detectedCount++
 
-            // Coordinates are normalized [0,1] in YOLOv8
-            val centerX = xs[i] * originalWidth
-            val centerY = ys[i] * originalHeight
-            val width = ws[i] * originalWidth
-            val height = hs[i] * originalHeight
+            val rawX = xs[i]
+            val rawY = ys[i]
+            val rawW = ws[i]
+            val rawH = hs[i]
+            
+            // Auto-detect normalized vs pixel coordinates. 
+            // If they are larger than 2.0f, they are likely in [0, INPUT_SIZE] range instead of [0, 1] range.
+            val isNormalized = (rawX <= 2.0f && rawY <= 2.0f && rawW <= 2.0f && rawH <= 2.0f)
+            
+            val normX = if (isNormalized) rawX else rawX / INPUT_SIZE.toFloat()
+            val normY = if (isNormalized) rawY else rawY / INPUT_SIZE.toFloat()
+            val normW = if (isNormalized) rawW else rawW / INPUT_SIZE.toFloat()
+            val normH = if (isNormalized) rawH else rawH / INPUT_SIZE.toFloat()
+
+            val centerX = normX * originalWidth
+            val centerY = normY * originalHeight
+            val width = normW * originalWidth
+            val height = normH * originalHeight
 
             // Validate box dimensions
             if (width < 10f || height < 10f) {
@@ -263,7 +289,7 @@ class RoboflowContentDetector(private val context: Context) {
             }
 
             if (logDetails && detectedCount <= 5) {
-                Log.d(TAG, "Detection #$detectedCount: raw=(${xs[i]}, ${ys[i]}, ${ws[i]}, ${hs[i]}) -> pixel=(${centerX.toInt()}, ${centerY.toInt()}, ${width.toInt()}x${height.toInt()}), conf=${"%.3f".format(confidence)}")
+                Log.d(TAG, "Detection #$detectedCount: raw=(${rawX}, ${rawY}, ${rawW}, ${rawH}) -> pixel=(${centerX.toInt()}, ${centerY.toInt()}, ${width.toInt()}x${height.toInt()}), conf=${"%.3f".format(confidence)}")
             }
 
             list.add(
@@ -273,8 +299,8 @@ class RoboflowContentDetector(private val context: Context) {
                     w = width,
                     h = height,
                     confidence = confidence,
-                    className = CLASS_NAME,
-                    classId = 0
+                    className = "class_$classId",
+                    classId = classId
                 )
             )
         }

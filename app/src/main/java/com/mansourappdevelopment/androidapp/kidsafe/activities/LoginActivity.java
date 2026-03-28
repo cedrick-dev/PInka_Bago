@@ -198,31 +198,32 @@ public class LoginActivity extends AppCompatActivity implements OnPasswordResetL
 								else
 									startAccountVerificationActivity();
 							} else {
+								Exception exception = task.getException();
 								String errorCode = null;
-								try {
-									errorCode = ((FirebaseAuthException) task.getException()).getErrorCode();
-								} catch (ClassCastException e) {
-									e.printStackTrace();
+								String errorMessage = exception != null ? exception.getMessage() : "";
+
+								// Safe instanceof check — newer Firebase SDK versions throw
+								// FirebaseException (not FirebaseAuthException) for some errors
+								if (exception instanceof FirebaseAuthException) {
+									errorCode = ((FirebaseAuthException) exception).getErrorCode();
 								}
-								
-								// Add null check to prevent NullPointerException
-								if (errorCode != null) {
-									switch (errorCode) {
-									case "ERROR_INVALID_EMAIL":
-										txtLogInEmail.setError(getString(R.string.enter_valid_email));
-										break;
-									case "ERROR_USER_NOT_FOUND":
-										txtLogInEmail.setError(getString(R.string.email_isnt_registered));
-										break;
-									case "ERROR_WRONG_PASSWORD":
-										txtLogInPassword.setError(getString(R.string.wrong_password));
-										break;
-									default:
-										Toast.makeText(LoginActivity.this, getString(R.string.authentication_failed),
-												Toast.LENGTH_SHORT).show();
-									}
+
+								// Handle new Firebase SDK error format: INVALID_LOGIN_CREDENTIALS
+								// (replaces ERROR_USER_NOT_FOUND + ERROR_WRONG_PASSWORD post-2023)
+								boolean isInvalidCredentials = "ERROR_INVALID_CREDENTIAL".equals(errorCode)
+										|| (errorMessage != null && errorMessage.contains("INVALID_LOGIN_CREDENTIALS"));
+
+								if ("ERROR_INVALID_EMAIL".equals(errorCode)) {
+									txtLogInEmail.setError(getString(R.string.enter_valid_email));
+								} else if ("ERROR_USER_NOT_FOUND".equals(errorCode)) {
+									txtLogInEmail.setError(getString(R.string.email_isnt_registered));
+								} else if ("ERROR_WRONG_PASSWORD".equals(errorCode)) {
+									txtLogInPassword.setError(getString(R.string.wrong_password));
+								} else if (isInvalidCredentials) {
+									// New Firebase SDK: wrong email or wrong password
+									txtLogInPassword.setError("Incorrect email or password. Please try again.");
+									txtLogInEmail.setError("Incorrect email or password. Please try again.");
 								} else {
-									// Handle null errorCode (network errors, non-Firebase exceptions)
 									Toast.makeText(LoginActivity.this, getString(R.string.authentication_failed),
 											Toast.LENGTH_SHORT).show();
 								}

@@ -8,7 +8,7 @@ android {
     defaultConfig {
         applicationId "com.mansourappdevelopment.androidapp.kidsafe"
         minSdkVersion 21
-        targetSdkVersion 33
+        targetSdkVersion 35
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -29,6 +29,9 @@ android {
     }
     kotlinOptions {
         jvmTarget = '1.8'
+    }
+    buildFeatures {
+        mlModelBinding true
     }
 }
 
@@ -60,6 +63,13 @@ dependencies {
     // TensorFlow Lite
     implementation 'org.tensorflow:tensorflow-lite:2.14.0'
     implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
+
+    // HTTP client – used by RoboflowApiDetector for cloud inference (testing mode)
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    // Coroutines (for background logic)
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3'
 
     // Tests
     testImplementation 'junit:junit:4.13.2'

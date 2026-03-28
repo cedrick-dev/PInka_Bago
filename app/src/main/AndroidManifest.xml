@@ -26,8 +26,11 @@
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     
-    <!-- NSFW Detection Permissions -->
+    <!-- NSFW Detection & Foreground Service Permissions (Required for targetSdk 34+) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:name=".NotificationChannelCreator"
@@ -62,8 +65,12 @@
         <service
             android:name=".services.UploadAppsService"
             android:permission="android.permission.BIND_JOB_SERVICE" />
-        <service android:name=".services.MainForegroundService" />
-        <service android:name=".services.GeoFencingForegroundService" />
+        <service 
+            android:name=".services.MainForegroundService"
+            android:foregroundServiceType="location" />
+        <service 
+            android:name=".services.GeoFencingForegroundService"
+            android:foregroundServiceType="location" />
         
         <!-- NSFW Detection Service -->
         <service 
@@ -71,6 +78,18 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
+
+        <service
+            android:name="com.kidsafe.secure.services.NsfwAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
 
         <receiver android:name=".broadcasts.BootCompleteReceiver" android:exported="true">
             <intent-filter>

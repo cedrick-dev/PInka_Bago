@@ -105,6 +105,9 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:20.7.0")
     implementation("de.hdodenhof:circleimageview:3.1.0")
 
+    // ML Kit Text Recognition (OCR) – bundled, no Play Store download needed
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")

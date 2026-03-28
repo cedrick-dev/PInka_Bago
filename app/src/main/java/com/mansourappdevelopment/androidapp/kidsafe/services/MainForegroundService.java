@@ -18,6 +18,7 @@ import android.database.Cursor;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -120,7 +121,11 @@ public class MainForegroundService extends Service {
 						.setContentText("User not authenticated")
 						.setPriority(NotificationCompat.PRIORITY_LOW)
 						.build();
-				startForeground(NOTIFICATION_ID, notification);
+				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+					startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+				} else {
+					startForeground(NOTIFICATION_ID, notification);
+				}
 				stopSelf();
 				return START_NOT_STICKY;
 			}
@@ -134,7 +139,11 @@ public class MainForegroundService extends Service {
 				// .setContentTitle(notificationContent)
 				.setSmallIcon(R.drawable.ic_kidsafe).setContentIntent(pendingIntent).build();
 
-		startForeground(NOTIFICATION_ID, notification);
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+			startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+		} else {
+			startForeground(NOTIFICATION_ID, notification);
+		}
 
 		getUserLocation();
 
